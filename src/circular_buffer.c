@@ -2,6 +2,15 @@
 #include <structmember.h>
 #include <pyerrors.h>
 
+#ifndef Py_TYPE
+    #define Py_TYPE(ob) (((PyObject*)(ob))->ob_type)
+#endif
+#ifndef PyString_FromFormat
+    #define PyString_FromFormat PyUnicode_FromFormat
+#endif
+#ifndef PyString_FromString
+    #define PyString_FromString PyUnicode_FromString
+#endif
 
 /* objects */
 
@@ -93,7 +102,7 @@ static void CircularBuffer_destroy(CircularBuffer *self)
     printf("CircularBuffer.__del__() called\n");
 
     free(self->raw);
-    self->ob_type->tp_free((PyObject*) self);
+    Py_TYPE(self)->tp_free((PyObject*) self);
 }
 
 static PyObject *CircularBuffer_repr(CircularBuffer *self)
@@ -347,8 +356,7 @@ static PySequenceMethods CircularBuffer_sequence_methods[] = {
 // see: https://docs.python.org/2/c-api/typeobj.html
 
 static PyTypeObject CircularBufferType = {
-    PyObject_HEAD_INIT(NULL)
-    0,  // ob_size (deprecated)
+    PyVarObject_HEAD_INIT(NULL, 0)
     // tp_name
     "circularbuffer.CircularBuffer",
     // tp_basicsize
@@ -400,23 +408,52 @@ static PyTypeObject CircularBufferType = {
     CircularBuffer_create,
 };
 
+#if PY_MAJOR_VERSION >= 3
+static struct PyModuleDef moduledef = {
+    PyModuleDef_HEAD_INIT,
+    "circularbuffer",                           /* m_name */
+    "Simple implementation of circular bufer.", /* m_doc */
+    -1,                                         /* m_size */
+    Module_methods,                             /* m_methods */
+    NULL,                                       /* m_reload */
+    NULL,                                       /* m_traverse */
+    NULL,                                       /* m_clear */
+    NULL,                                       /* m_free */
+};
+#endif
 
 
 /* initialization */
 
-PyMODINIT_FUNC initcircularbuffer(void)
+static PyObject *module_init(void)
 {
     // create new module
+    #if PY_MAJOR_VERSION >= 3
+    PyObject* module = PyModule_Create(&moduledef);
+    #else
     PyObject* module = Py_InitModule3("circularbuffer", Module_methods,
         "Simple implementation of circular buffer."
     );
-    if (module == NULL) { return; }
+    #endif
+    if (module == NULL) { return NULL; }
 
     // create new class
-    if (PyType_Ready(&CircularBufferType) < 0) { return; }
+    if (PyType_Ready(&CircularBufferType) < 0) { return NULL; }
 
     // add class to module
     Py_INCREF(&CircularBufferType);
     PyModule_AddObject(module, "CircularBuffer",
                        (PyObject*) &CircularBufferType);
+
+    return module;
 }
+
+#if PY_MAJOR_VERSION < 3
+PyMODINIT_FUNC initcircularbuffer(void) {
+    module_init();
+}
+#else
+PyMODINIT_FUNC PyInit_circularbuffer(void) {
+    return module_init();
+}
+#endif
