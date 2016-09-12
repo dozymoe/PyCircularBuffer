@@ -8,9 +8,12 @@
 #ifndef PyString_FromFormat
     #define PyString_FromFormat PyUnicode_FromFormat
 #endif
-#ifndef PyString_FromString
-    #define PyString_FromString PyUnicode_FromString
+#ifndef PyString_AsString
+    #define PyString_AsString PyBytes_AsString
 #endif
+
+// see: http://stackoverflow.com/a/17996915
+#define QUOTE(...) #__VA_ARGS__
 
 /* objects */
 
@@ -21,46 +24,95 @@ typedef struct {
     int read;
     int write;
     int allocated;
+    int allocated_before_resize;
 } CircularBuffer;
 
 
 /* helper functions */
 
-const char* circularbuffer_peek(CircularBuffer* buf)
+/*
+ * Get read pointer.
+ */
+const char* circularbuffer_readptr(CircularBuffer* self)
 {
-    return (const char*) &buf->raw[buf->read];
+    return (const char*) &self->raw[self->read];
 }
 
-int circularbuffer_length(CircularBuffer* buf)
+/*
+ * Size of sequential stored data.
+ */
+int circularbuffer_forward_length(CircularBuffer* self, int start)
 {
-  return strlen(circularbuffer_peek(buf));
+    if (self->write >= start)
+    {
+        return self->write - start;
+    }
+    else
+    {
+        return self->allocated_before_resize - start;
+    }
 }
 
-int circularbuffer_available(CircularBuffer* buf)
+/*
+ * Total size of stored data.
+ */
+int circularbuffer_total_length(CircularBuffer* self)
 {
-  if (buf->write < buf->read)
-  {
-    return buf->read - buf->write - 1;
-  }
-  else if (buf->write == buf->allocated - 1)
-  {
-    return buf->read;
-  }
-  else
-  {
-    return buf->allocated - buf->write - 1;
-  }
+    int len = circularbuffer_forward_length(self, self->read);
+    if (self->write < self->read)
+    {
+        len += circularbuffer_forward_length(self, 0);
+    }
+    return len;
+}
+
+/*
+ * Actual position in our circular bufer.
+ */
+int circularbuffer_translated_position(CircularBuffer* self, int pos)
+{
+    if (pos < 0)
+    {
+        return pos;
+    }
+    else if (pos > circularbuffer_total_length(self))
+    {
+        return -1;
+    }
+    int translated_pos = self->read + pos;
+    if (translated_pos > self->allocated_before_resize)
+    {
+        translated_pos -= self->allocated_before_resize;
+    }
+    return translated_pos;
+}
+
+/*
+ * Get sequential size available.
+ */
+int circularbuffer_write_available(CircularBuffer* self)
+{
+    if (self->write < self->read)
+    {
+        return self->read - self->write - 1;
+    }
+    else if (self->write == self->allocated)
+    {
+        return self->read - 1;
+    }
+    else
+    {
+        return self->allocated - self->write;
+    }
 }
 
 
 /* magic methods */
 
-static PyObject *CircularBuffer_create(PyTypeObject *type, PyObject *args,
-                                       PyObject *kwargs)
+static PyObject* CircularBuffer_create(PyTypeObject* type, PyObject* args,
+        PyObject* kwargs)
 {
-    printf("CircularBuffer.__new__() called\n");
-
-    CircularBuffer *self;
+    CircularBuffer* self;
 
     self = (CircularBuffer*) type->tp_alloc(type, 0);
     if (self)
@@ -69,120 +121,168 @@ static PyObject *CircularBuffer_create(PyTypeObject *type, PyObject *args,
         self->read = 0;
         self->write = 0;
         self->allocated = 0;
+        self->allocated_before_resize = 0;
     }
 
     return (PyObject*) self;
 }
 
-static int CircularBuffer_initialize(CircularBuffer *self, PyObject *args,
-                                     PyObject *kwargs)
+static int CircularBuffer_initialize(CircularBuffer* self, PyObject* args,
+        PyObject* kwargs)
 {
-    printf("CircularBuffer.__init__() called\n");
-
-    static char *kwlist[] = {"size", NULL};
+    static char* kwlist[] = {"size", NULL};
 
     int size;
-
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "I", kwlist, &size))
     {
         return -1;
     }
 
-    self->raw = (char*) malloc(size);
+    self->raw = (char*) malloc(size + 1);
     if (self->raw == NULL) { return -1; }
 
     self->allocated = size;
+    self->allocated_before_resize = size;
     self->raw[0] = 0;
     return 0;
 }
 
-static void CircularBuffer_destroy(CircularBuffer *self)
+static void CircularBuffer_destroy(CircularBuffer* self)
 {
-    printf("CircularBuffer.__del__() called\n");
-
     free(self->raw);
     Py_TYPE(self)->tp_free((PyObject*) self);
 }
 
-static PyObject *CircularBuffer_repr(CircularBuffer *self)
+static PyObject* CircularBuffer_repr(CircularBuffer* self)
 {
-    printf("CircularBuffer.__repr__() called\n");
-
-    return PyString_FromFormat("<CircularBuffer[%i]:%s>",
-                               circularbuffer_length(self),
-                               circularbuffer_peek(self));
+    if (self->write >= self->read)
+    {
+        return PyString_FromFormat("<CircularBuffer[%u]:%s>",
+                circularbuffer_total_length(self),
+                circularbuffer_readptr(self));
+    }
+    else
+    {
+        return PyString_FromFormat("<CircularBuffer[%u]:%s%s>",
+                circularbuffer_total_length(self),
+                circularbuffer_readptr(self),
+                self->raw);
+    }
 }
 
-static PyObject *CircularBuffer_str(CircularBuffer *self)
+static PyObject* CircularBuffer_str(CircularBuffer* self)
 {
-    printf("CircularBuffer.__str__() called\n");
-
-    return PyString_FromString(circularbuffer_peek(self));
+    if (self->write >= self->read)
+    {
+        return PyString_FromFormat("%s", circularbuffer_readptr(self));
+    }
+    else
+    {
+        return PyString_FromFormat("%s%s", circularbuffer_readptr(self),
+                self->raw);
+    }
 }
 
 
 /* sequence methods */
 
-static Py_ssize_t CircularBuffer_length(CircularBuffer *self)
+static Py_ssize_t CircularBuffer_length(CircularBuffer* self)
 {
-    printf("CircularBuffer.__len__() called\n");
-
-    return circularbuffer_length(self);
+    return circularbuffer_total_length(self);
 }
 
-static PyObject *CircularBuffer_item(CircularBuffer *self, int pos)
+static PyObject* CircularBuffer_get_item(CircularBuffer* self, Py_ssize_t pos)
 {
-    printf("CircularBuffer.__getitem__() called\n");
-
-    if (pos > circularbuffer_length(self)) { return NULL; }
-    return Py_BuildValue("s", self->raw[self->read + pos]);
-}
-
-static int CircularBuffer_ass_item(CircularBuffer *self, int pos,
-                                   PyObject *args)
-{
-    printf("CircularBuffer.__setitem__() called\n");
-
-    const char *data;
-
-
-    if (!PyArg_ParseTuple(args, "s", &data)) { return -1; }
-    if (pos > circularbuffer_length(self)) { return -1; }
-    self->raw[self->read + pos] = data[0];
-    return 1;
-}
-
-static int CircularBuffer_contains(CircularBuffer *self, PyObject *args)
-{
-    printf("CircularBuffer.__contains__() called\n");
-
-    const char *search;
-
-
-    if (!PyArg_Parse(args, "s", &search))
+    int translated_pos = circularbuffer_translated_position(self, pos);
+    if (translated_pos < 0)
     {
-        return -1;
+        PyErr_SetNone(PyExc_IndexError);
+        return NULL;
+    }
+#if PY_MAJOR_VERSION >= 3
+    return Py_BuildValue("y#", &self->raw[translated_pos], 1);
+#else
+    return Py_BuildValue("s#", &self->raw[translated_pos], 1);
+#endif
+}
+
+static int CircularBuffer_set_item(CircularBuffer* self, Py_ssize_t pos,
+        PyObject* item)
+{
+    const char* new_item = PyString_AsString(item);
+    int translated_pos = circularbuffer_translated_position(self, pos);
+    if (translated_pos < 0)
+    {
+        PyErr_SetNone(PyExc_IndexError);
+        return translated_pos;
+    }
+    self->raw[translated_pos] = new_item[0];
+    return 0;
+}
+
+static int CircularBuffer_contains(CircularBuffer* self, PyObject* item)
+{
+    const char* search = PyString_AsString(item);
+    int search_len = strlen(search);
+    if (search_len > circularbuffer_total_length(self))
+    {
+        return 0;
+    }
+    const char* psearch = search;
+    const char* psearch_end = search + search_len;
+
+    const char* pread = circularbuffer_readptr(self);
+    const char* pread_half_end;
+    const char* pread_end;
+    if (self->write < self->read)
+    {
+        pread_half_end = self->raw + self->allocated_before_resize;
+        pread_end = self->raw + self->write;
+    }
+    else
+    {
+        pread_half_end = self->raw + self->write;
+        pread_end = self->raw + self->write;
     }
 
-    const char *peek = circularbuffer_peek(self);
-    char *pos = strpbrk(peek, search);
-    if (pos) { return 1; }
-    else { return 0; }
+    while (pread < pread_half_end)
+    {
+        psearch = pread[0] == psearch[0] ? psearch + 1 : search;
+        if (psearch == psearch_end)
+        {
+            return 1;
+        }
+        pread += 1;
+    }
+    while (pread < pread_end)
+    {
+        psearch = pread[0] == psearch[0] ? psearch + 1 : search;
+        if (psearch == psearch_end)
+        {
+            return 1;
+        }
+        pread += 1;
+    }
+    return 0;
 }
 
 
 /* regular methods */
 
+static const char CIRCULARBUFFER_RESIZE_DOCSTRING[] = QUOTE(
+    Increase the size of internal buffer.\n
+    \n
+    :param size: new buffer size\n
+    :returns: actual size of the new buffer\n
+    :raises MemoryError: cannot allocate memory needed
+);
+
 static PyObject *CircularBuffer_resize(CircularBuffer *self, PyObject *args,
-                                       PyObject *kwargs)
+        PyObject *kwargs)
 {
-    printf("CircularBuffer.resize() called\n");
-
     static char *kwlist[] = {"size", NULL};
-
     int size;
-
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "I", kwlist, &size))
     {
@@ -190,81 +290,117 @@ static PyObject *CircularBuffer_resize(CircularBuffer *self, PyObject *args,
     }
     else if (size > self->allocated)
     {
-        void *new_raw = realloc(self->raw, size);
+        void *new_raw = realloc(self->raw, size + 1);
         if (new_raw)
         {
             self->raw = (char*) new_raw;
             self->allocated = size;
+            if (self->write >= self->read)
+            {
+                self->allocated_before_resize = size;
+            }
         }
         else
         {
-            // raise exceptions
-            PyErr_SetString(PyExc_MemoryError, "Cannot allocate memory");
-            return NULL;
+            return PyErr_NoMemory();
         }
     }
 
     return Py_BuildValue("I", self->allocated);
 }
 
+
+static const char CIRCULARBUFFER_READ_DOCSTRING[] = QUOTE(
+    Read from internal buffer.\n
+    \n
+    :param size: number of bytes to read, could be negative which means
+                 to read all from internal buffer\n
+    :returns: bytearray of data whose size could be smaller than requested
+);
+
 static PyObject *CircularBuffer_read(CircularBuffer *self, PyObject *args,
-                                     PyObject *kwargs)
+        PyObject *kwargs)
 {
-    printf("CircularBuffer.read() called\n");
-
-    static char *kwlist[] = {"out", "size", NULL};
-
-    char* out;
+    static char *kwlist[] = {"size", NULL};
     int size;
+    const char* pread = circularbuffer_readptr(self);
 
-
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "w#", kwlist, &out, &size))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "i", kwlist, &size))
     {
         return NULL;
     }
-
-    int length = circularbuffer_length(self);
-    if (length == 0 || size <= 1) { return Py_BuildValue("I", 0); }
-
-    // exclude the terminating null character
-    size = size - 1;
-    // if actual length is smaller than requested
-    if (size > length) { size = length; }
-    // copy and set final null character
-    memcpy(out, circularbuffer_peek(self), size);
-    out[size] = 0;
-    // move read index
-    if (size < length)
+    if (size == 0)
     {
-        self->read += size;
+        return NULL;
     }
-    else if (self->write < self->read)
+    else if (size < 0 || size == circularbuffer_total_length(self))
     {
-        self->read = 0;
+#if PY_MAJOR_VERSION >= 3
+        PyObject* result = Py_BuildValue("y", pread);
+#else
+        PyObject* result = Py_BuildValue("s", pread);
+#endif
+        self->read = self->write;
+        return result;
     }
     else
     {
-        self->read = self->write;
+        char* out = (char*) malloc(size + 1);
+        out[size] = 0;
+        char* pout = out;
+
+        int halflen = circularbuffer_forward_length(self, self->read);
+
+        if (size < halflen || self->write > self->read)
+        {
+            memcpy(pout, pread, size);
+            self->read += size;
+        }
+        else
+        {
+            memcpy(pout, pread, halflen);
+            pout += halflen;
+            size -= halflen;
+            self->read = 0;
+
+            pread = circularbuffer_readptr(self);
+            memcpy(pout, pread, size);
+            self->read += size;
+        }
+
+#if PY_MAJOR_VERSION >= 3
+        PyObject* result = Py_BuildValue("y", out);
+#else
+        PyObject* result = Py_BuildValue("s", out);
+#endif
+        free(out);
+        return result;
     }
-    return Py_BuildValue("I", size);
 }
 
-static PyObject *CircularBuffer_write(CircularBuffer *self, PyObject *args,
-                                      PyObject *kwargs)
-{
-    printf("CircularBuffer.write() called\n");
 
+static const char CIRCULARBUFFER_WRITE_DOCSTRING[] = QUOTE(
+    Write into internal buffer.\n
+    Type of bytes is expected, and unicode will be automatically encoded with
+    utf-8.\n
+    \n
+    :param data: bytearray to be added to the buffer\n
+    :returns: number of bytes written, could be less than the size of data
+);
+
+static PyObject *CircularBuffer_write(CircularBuffer *self, PyObject *args,
+        PyObject *kwargs)
+{
     static char *kwlist[] = {"data", NULL};
 
     const char* data;
-
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &data))
     {
         return NULL;
     }
 
-    int avail = circularbuffer_available(self);
+    int avail = circularbuffer_write_available(self);
     int length = strlen(data);
 
     if (avail == 0) {
@@ -274,7 +410,7 @@ static PyObject *CircularBuffer_write(CircularBuffer *self, PyObject *args,
     {
         length = avail;
     }
-    if (self->write == self->allocated - 1)
+    if (self->write == self->allocated)
     {
         self->write = 0;
     }
@@ -282,29 +418,27 @@ static PyObject *CircularBuffer_write(CircularBuffer *self, PyObject *args,
     self->write += length;
     self->raw[self->write] = 0;
 
+    if (self->allocated_before_resize < self->allocated && \
+            self->write >= self->read)
+    {
+        self->allocated_before_resize = self->allocated;
+    }
+
     return Py_BuildValue("I", length);
 }
 
-static PyObject *CircularBuffer_available(CircularBuffer *self)
-{
-    printf("CircularBuffer.available() called\n");
 
-    int size;
-    if (self->write < self->read)
-    {
-        size = self->read - self->write - 1;
-    }
-    else if (self->write == self->allocated - 1)
-    {
-        size = self->read;
-    }
-    else
-    {
-        size = self->allocated - self->write - 1;
-    }
+static const char CIRCULARBUFFER_WRITE_AVAILABLE_DOCSTRING[] = QUOTE(
+    Size of internal buffer available for writing.\n
+    \n
+    :returns: size of one half of internal buffer available
+);
+
+static PyObject *CircularBuffer_write_available(CircularBuffer *self)
+{
+    int size = circularbuffer_write_available(self);
     return Py_BuildValue("I", size);
 }
-
 
 
 /* meta description */
@@ -320,18 +454,30 @@ static PyMemberDef CircularBuffer_members[] = {
 };
 
 static PyMethodDef CircularBuffer_methods[] = {
-    {"resize", (PyCFunction) CircularBuffer_resize,
-     METH_VARARGS | METH_KEYWORDS,
-     "Increase the size of the buffer."},
-    {"read", (PyCFunction) CircularBuffer_read,
-     METH_VARARGS | METH_KEYWORDS,
-     "Read from internal buffer."},
-    {"write", (PyCFunction) CircularBuffer_write,
-     METH_VARARGS | METH_KEYWORDS,
-     "Write into internal buffer."},
-    {"available", (PyCFunction) CircularBuffer_available,
-     METH_NOARGS,
-     "Buffer size currently available for writing."},
+    {
+        "resize",
+        (PyCFunction) CircularBuffer_resize,
+        METH_VARARGS | METH_KEYWORDS,
+        CIRCULARBUFFER_RESIZE_DOCSTRING
+    },
+    {
+        "read",
+        (PyCFunction) CircularBuffer_read,
+        METH_VARARGS | METH_KEYWORDS,
+        CIRCULARBUFFER_READ_DOCSTRING
+    },
+    {
+        "write",
+        (PyCFunction) CircularBuffer_write,
+        METH_VARARGS | METH_KEYWORDS,
+        CIRCULARBUFFER_WRITE_DOCSTRING
+    },
+    {
+        "write_available",
+        (PyCFunction) CircularBuffer_write_available,
+        METH_NOARGS,
+        CIRCULARBUFFER_WRITE_AVAILABLE_DOCSTRING
+    },
     // end of array
     {NULL},
 };
@@ -342,10 +488,10 @@ static PySequenceMethods CircularBuffer_sequence_methods[] = {
     0, // sq_concat
     0, // sq_repeat
     // sq_item
-    (ssizeargfunc) CircularBuffer_item,
+    (ssizeargfunc) CircularBuffer_get_item,
     0, // sq_slice
     // sq_ass_item
-    (ssizeobjargproc) CircularBuffer_ass_item,
+    (ssizeobjargproc) CircularBuffer_set_item,
     0, // sq_ass_slice
     // sq_contains
     (objobjproc) CircularBuffer_contains,
@@ -357,55 +503,43 @@ static PySequenceMethods CircularBuffer_sequence_methods[] = {
 
 static PyTypeObject CircularBufferType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    // tp_name
-    "circularbuffer.CircularBuffer",
-    // tp_basicsize
-    sizeof(CircularBuffer),
-    0,  // tp_itemsize
-    // tp_dealloc
-    (destructor) CircularBuffer_destroy,
-    0,  // tp_print (deprecated)
-    0,  // tp_getattr (deprecated)
-    0,  // tp_setattr (deprecated)
-    0,  // tp_compare
-    // tp_repr
-    (reprfunc) CircularBuffer_repr,
-    0,  // tp_as_number
-    // tp_as_sequence
-    CircularBuffer_sequence_methods,
-    0,  // tp_as_mapping
-    0,  // tp_hash
-    0,  // tp_call
-    // tp_str
-    (reprfunc) CircularBuffer_str,
-    0,  // tp_getattro
-    0,  // tp_setattro
-    0,  // tp_as_buffer
-    // tp_flags
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    // tp_doc
-    "Circular buffer",
-    0,  // tp_traverse
-    0,  // tp_clear
-    0,  // tp_richcompare
-    0,  // tp_weaklistoffset
-    0,  // tp_iter
-    0,  // tp_iternext
-    // tp_methods
-    CircularBuffer_methods,
-    // tp_members
-    CircularBuffer_members,
-    0,  // tp_getset
-    0,  // tp_base
-    0,  // tp_dict
-    0,  // tp_descr_get
-    0,  // tp_descr_set
-    0,  // tp_dictoffset
-    // tp_init
-    (initproc) CircularBuffer_initialize,
-    0,  // tp_alloc
-    // tp_new
-    CircularBuffer_create,
+    "circularbuffer.CircularBuffer",           // tp_name
+    sizeof(CircularBuffer),                    // tp_basicsize
+    0,                                         // tp_itemsize
+    (destructor) CircularBuffer_destroy,       // tp_dealloc
+    0,                                         // tp_print (deprecated)
+    0,                                         // tp_getattr (deprecated)
+    0,                                         // tp_setattr (deprecated)
+    0,                                         // tp_compare
+    (reprfunc) CircularBuffer_repr,            // tp_repr
+    0,                                         // tp_as_number
+    CircularBuffer_sequence_methods,           // tp_as_sequence
+    0,                                         // tp_as_mapping
+    0,                                         // tp_hash
+    0,                                         // tp_call
+    (reprfunc) CircularBuffer_str,             // tp_str
+    0,                                         // tp_getattro
+    0,                                         // tp_setattro
+    0,                                         // tp_as_buffer
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,  // tp_flags
+    "Circular buffer",                         // tp_doc
+    0,                                         // tp_traverse
+    0,                                         // tp_clear
+    0,                                         // tp_richcompare
+    0,                                         // tp_weaklistoffset
+    0,                                         // tp_iter
+    0,                                         // tp_iternext
+    CircularBuffer_methods,                    // tp_methods
+    CircularBuffer_members,                    // tp_members
+    0,                                         // tp_getset
+    0,                                         // tp_base
+    0,                                         // tp_dict
+    0,                                         // tp_descr_get
+    0,                                         // tp_descr_set
+    0,                                         // tp_dictoffset
+    (initproc) CircularBuffer_initialize,      // tp_init
+    0,                                         // tp_alloc
+    CircularBuffer_create,                     // tp_new
 };
 
 #if PY_MAJOR_VERSION >= 3

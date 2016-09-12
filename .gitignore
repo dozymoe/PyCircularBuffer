@@ -1,1 +1,29 @@
+## git
+
+*.orig
+
+
+## python
+
+*.pyc
+__pycache__/
+
+
+## setuptools
+
 /build/
+/dist/
+/pycircularbuffer.egg-info/
+/.eggs/
+/.cache/
+
+
+## tox
+
+/.tox/
+
+
+## vim
+
+*.swo
+*.swp
