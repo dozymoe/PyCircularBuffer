@@ -7,9 +7,9 @@ c_lib = Extension(
 
 setup(
     name='pycircularbuffer',
-    version='0.0.2',
+    version='0.0.3',
     url='https://github.com/dozymoe/PyCircularBuffer',
-    download_url='https://github.com/dozymoe/PyCircularBuffer/tarball/0.0.2',
+    download_url='https://github.com/dozymoe/PyCircularBuffer/tarball/0.0.3',
     author='Fahri Reza',
     author_email='dozymoe@gmail.com',
     description='Simple implementation of circular buffer.',
