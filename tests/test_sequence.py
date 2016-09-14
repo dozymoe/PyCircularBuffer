@@ -2,7 +2,7 @@ from circularbuffer import CircularBuffer
 
 def test_sequence():
     buf = CircularBuffer(10)
-    buf.write('12345')
+    buf.write(b'12345')
     assert buf[0] == b'1'
     try:
         buf[6]

@@ -230,7 +230,7 @@ static int CircularBuffer_contains(CircularBuffer* self, PyObject* item)
         return 0;
     }
     const char* psearch = search;
-    const char* psearch_end = search + search_len;
+    const char* psearch_end = psearch + search_len;
 
     const char* pread = circularbuffer_readptr(self);
     const char* pread_half_end;
@@ -264,6 +264,7 @@ static int CircularBuffer_contains(CircularBuffer* self, PyObject* item)
         }
         pread += 1;
     }
+
     return 0;
 }
 
@@ -388,14 +389,18 @@ static const char CIRCULARBUFFER_WRITE_DOCSTRING[] = QUOTE(
     :returns: number of bytes written, could be less than the size of data
 );
 
-static PyObject *CircularBuffer_write(CircularBuffer *self, PyObject *args,
-        PyObject *kwargs)
+static PyObject* CircularBuffer_write(CircularBuffer* self, PyObject* args,
+        PyObject* kwargs)
 {
-    static char *kwlist[] = {"data", NULL};
+    static char* kwlist[] = {"data", NULL};
 
     const char* data;
 
+#if PY_MAJOR_VERSION >= 3
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "y", kwlist, &data))
+#else
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &data))
+#endif
     {
         return NULL;
     }
@@ -434,11 +439,100 @@ static const char CIRCULARBUFFER_WRITE_AVAILABLE_DOCSTRING[] = QUOTE(
     :returns: size of one half of internal buffer available
 );
 
-static PyObject *CircularBuffer_write_available(CircularBuffer *self)
+static PyObject* CircularBuffer_write_available(CircularBuffer* self)
 {
     int size = circularbuffer_write_available(self);
     return Py_BuildValue("I", size);
 }
+
+
+static const char CIRCULARBUFFER_COUNT_DOCSTRING[] = QUOTE(
+    Return the number of occurences of string in internal buffer.\n
+    \n
+    :param text: string to search\n
+    :returns: number of occurences
+);
+
+static PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
+        PyObject* kwargs)
+{
+    static char* kwlist[] = {"text", NULL};
+
+    const char* search;
+
+    printf("before parse args.\n");
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &search))
+    {
+        PyErr_BadArgument();
+        return NULL;
+    }
+    printf("after parse args.\n");
+
+    int search_len = strlen(search);
+    if (search_len > circularbuffer_total_length(self))
+    {
+        PyErr_BadArgument();
+        return NULL;
+    }
+
+    const char* psearch = search;
+    const char* psearch_end = psearch + search_len;
+
+    const char* pread = circularbuffer_readptr(self);
+    const char* pread_half_end;
+    const char* pread_end;
+    if (self->write < self->read)
+    {
+        pread_half_end = self->raw + self->allocated_before_resize;
+        pread_end = self->raw + self->write;
+    }
+    else
+    {
+        pread_half_end = self->raw + self->write;
+        pread_end = self->raw + self->write;
+    }
+
+    Py_ssize_t count = 0;
+
+    while (pread < pread_half_end)
+    {
+        psearch = pread[0] == psearch[0] ? psearch + 1 : search;
+        if (psearch == psearch_end)
+        {
+            count += 1;
+            psearch = search;
+        }
+        pread += 1;
+    }
+    while (pread < pread_end)
+    {
+        psearch = pread[0] == psearch[0] ? psearch + 1 : search;
+        if (psearch == psearch_end)
+        {
+            count += 1;
+            psearch = search;
+        }
+        pread += 1;
+    }
+
+    return Py_BuildValue("n", count);
+}
+
+
+static const char CIRCULARBUFFER_CLEAR_DOCSTRING[] = QUOTE(
+    Size of internal buffer available for writing.\n
+    \n
+    :returns: size of one half of internal buffer available
+);
+
+static PyObject* CircularBuffer_clear(CircularBuffer* self)
+{
+    self->write = self->read = 0;
+    self->raw[0] = '\0';
+    self->allocated_before_resize = self->allocated;
+    return Py_BuildValue("s", NULL);
+}
+
 
 
 /* meta description */
@@ -455,16 +549,28 @@ static PyMemberDef CircularBuffer_members[] = {
 
 static PyMethodDef CircularBuffer_methods[] = {
     {
-        "resize",
-        (PyCFunction) CircularBuffer_resize,
+        "clear",
+        (PyCFunction) CircularBuffer_clear,
+        METH_NOARGS,
+        CIRCULARBUFFER_CLEAR_DOCSTRING
+    },
+    {
+        "count",
+        (PyCFunction) CircularBuffer_count,
         METH_VARARGS | METH_KEYWORDS,
-        CIRCULARBUFFER_RESIZE_DOCSTRING
+        CIRCULARBUFFER_COUNT_DOCSTRING
     },
     {
         "read",
         (PyCFunction) CircularBuffer_read,
         METH_VARARGS | METH_KEYWORDS,
         CIRCULARBUFFER_READ_DOCSTRING
+    },
+    {
+        "resize",
+        (PyCFunction) CircularBuffer_resize,
+        METH_VARARGS | METH_KEYWORDS,
+        CIRCULARBUFFER_RESIZE_DOCSTRING
     },
     {
         "write",
@@ -483,20 +589,16 @@ static PyMethodDef CircularBuffer_methods[] = {
 };
 
 static PySequenceMethods CircularBuffer_sequence_methods[] = {
-    // sq_length
-    (lenfunc) CircularBuffer_length,
-    0, // sq_concat
-    0, // sq_repeat
-    // sq_item
-    (ssizeargfunc) CircularBuffer_get_item,
-    0, // sq_slice
-    // sq_ass_item
-    (ssizeobjargproc) CircularBuffer_set_item,
-    0, // sq_ass_slice
-    // sq_contains
-    (objobjproc) CircularBuffer_contains,
-    0, // sq_inplace_concat
-    0, // sq_inplace_repeat
+    (lenfunc) CircularBuffer_length,             // sq_length
+    0,                                           // sq_concat
+    0,                                           // sq_repeat
+    (ssizeargfunc) CircularBuffer_get_item,      // sq_item
+    0,                                           // sq_slice
+    (ssizeobjargproc) CircularBuffer_set_item,   // sq_ass_item
+    0,                                           // sq_ass_slice
+    (objobjproc) CircularBuffer_contains,        // sq_contains
+    0,                                           // sq_inplace_concat
+    0,                                           // sq_inplace_repeat
 };
 
 // see: https://docs.python.org/2/c-api/typeobj.html
