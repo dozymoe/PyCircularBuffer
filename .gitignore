@@ -16,6 +16,7 @@ __pycache__/
 /pycircularbuffer.egg-info/
 /.eggs/
 /.cache/
+/*.so
 
 
 ## tox

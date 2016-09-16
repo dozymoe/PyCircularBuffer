@@ -225,7 +225,7 @@ static int CircularBuffer_contains(CircularBuffer* self, PyObject* item)
 {
     const char* search = PyString_AsString(item);
     int search_len = strlen(search);
-    if (search_len > circularbuffer_total_length(self))
+    if (search_len > circularbuffer_total_length(self) || search_len == 0)
     {
         return 0;
     }
@@ -267,6 +267,16 @@ static int CircularBuffer_contains(CircularBuffer* self, PyObject* item)
 
     return 0;
 }
+
+
+/* buffer methods */
+
+static int CircularBuffer_py3_getbuffer(PyObject* exporter, Py_buffer* view,
+        int flags)
+{
+}
+
+static int CircularBuffer_py3_releasebuffer
 
 
 /* regular methods */
@@ -460,16 +470,14 @@ static PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
 
     const char* search;
 
-    printf("before parse args.\n");
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &search))
     {
         PyErr_BadArgument();
         return NULL;
     }
-    printf("after parse args.\n");
 
     int search_len = strlen(search);
-    if (search_len > circularbuffer_total_length(self))
+    if (search_len > circularbuffer_total_length(self) || search_len == 0)
     {
         PyErr_BadArgument();
         return NULL;
@@ -534,6 +542,91 @@ static PyObject* CircularBuffer_clear(CircularBuffer* self)
 }
 
 
+static const char CIRCULARBUFFER_STARTSWITH_DOCSTRING[] = QUOTE(
+    CB.startswith(prefix) -> bool\n
+    \n
+    Return True if S starts with the specified prefix, False otherwise.
+);
+
+static PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
+        PyObject* kwargs)
+{
+    static char* kwlist[] = {"prefix", NULL};
+
+    const char* search;
+
+#if PY_MAJOR_VERSION >= 3
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "y", kwlist, &search))
+#else
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwlist, &search))
+#endif
+    {
+        PyErr_BadArgument();
+        return NULL;
+    }
+
+    int search_len = strlen(search);
+    if (search_len > circularbuffer_total_length(self) || search_len == 0)
+    {
+        PyErr_BadArgument();
+        return NULL;
+    }
+
+    const char* psearch = search;
+    const char* psearch_end = psearch + search_len;
+
+    const char* pread = circularbuffer_readptr(self);
+    const char* pread_half_end;
+    const char* pread_end;
+    if (self->write < self->read)
+    {
+        pread_half_end = self->raw + self->allocated_before_resize;
+        pread_end = self->raw + self->write;
+    }
+    else
+    {
+        pread_half_end = self->raw + self->write;
+        pread_end = self->raw + self->write;
+    }
+
+    Py_ssize_t count = 0;
+
+    while (pread < pread_half_end)
+    {
+        if (pread[0] == psearch[0])
+        {
+            psearch += 1;
+        }
+        else
+        {
+            return Py_BuildValue("i", 0);
+        }
+        if (psearch == psearch_end)
+        {
+            return Py_BuildValue("i", 1);
+        }
+        pread += 1;
+    }
+    while (pread < pread_end)
+    {
+        if (pread[0] == psearch[0])
+        {
+            psearch += 1;
+        }
+        else
+        {
+            return Py_BuildValue("i", 0);
+        }
+        if (psearch == psearch_end)
+        {
+            return Py_BuildValue("i", 1);
+        }
+        pread += 1;
+    }
+
+    return Py_BuildValue("i", 0);
+}
+
 
 /* meta description */
 
@@ -573,6 +666,12 @@ static PyMethodDef CircularBuffer_methods[] = {
         CIRCULARBUFFER_RESIZE_DOCSTRING
     },
     {
+        "startswith",
+        (PyCFunction) CircularBuffer_startswith,
+        METH_VARARGS | METH_KEYWORDS,
+        CIRCULARBUFFER_STARTSWITH_DOCSTRING
+    },
+    {
         "write",
         (PyCFunction) CircularBuffer_write,
         METH_VARARGS | METH_KEYWORDS,
@@ -601,6 +700,22 @@ static PySequenceMethods CircularBuffer_sequence_methods[] = {
     0,                                           // sq_inplace_repeat
 };
 
+#if PY_MAJOR_VERSION < 3
+static PyBufferProcs CircularBuffer_buffer_methods[] = {
+    readbufferproc bf_getreadbuffer,              // bf_getreadbuffer
+    writebufferproc bf_getwritebuffer,            // bf_getwritebuffer
+    segcountproc bf_getsegcount,                  // bf_getsegcount
+    charbufferproc bf_getcharbuffer,              // bf_getcharbuffer
+    (getbufferproc) CircularBuffer_py3_getbuffer, // bf_getbuffer
+    0,                                            // bf_releasebuffer
+};
+#else
+static PyBufferProcs CircularBuffer_buffer_methods[] = {
+    (getbufferproc) CircularBuffer_py3_getbuffer, // bf_getbuffer
+    0,                                            // bf_releasebuffer
+};
+#endif
+
 // see: https://docs.python.org/2/c-api/typeobj.html
 
 static PyTypeObject CircularBufferType = {
@@ -622,7 +737,7 @@ static PyTypeObject CircularBufferType = {
     (reprfunc) CircularBuffer_str,             // tp_str
     0,                                         // tp_getattro
     0,                                         // tp_setattro
-    0,                                         // tp_as_buffer
+    CircularBuffer_buffer_methods,             // tp_as_buffer
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,  // tp_flags
     "Circular buffer",                         // tp_doc
     0,                                         // tp_traverse

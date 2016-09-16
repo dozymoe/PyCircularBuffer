@@ -1,5 +1,7 @@
 from setuptools import setup, Extension, find_packages
 
+RELEASE_VERSION = '0.0.4'
+
 c_lib = Extension(
     'circularbuffer',
     sources=['src/circular_buffer.c'],
@@ -7,9 +9,11 @@ c_lib = Extension(
 
 setup(
     name='pycircularbuffer',
-    version='0.0.3',
+    version=RELEASE_VERSION,
     url='https://github.com/dozymoe/PyCircularBuffer',
-    download_url='https://github.com/dozymoe/PyCircularBuffer/tarball/0.0.3',
+    download_url='https://github.com/dozymoe/PyCircularBuffer/tarball/' +\
+            RELEASE_VERSION,
+
     author='Fahri Reza',
     author_email='dozymoe@gmail.com',
     description='Simple implementation of circular buffer.',
