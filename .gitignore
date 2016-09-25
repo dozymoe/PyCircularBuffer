@@ -8,6 +8,10 @@
 *.pyc
 __pycache__/
 
+/.virtualenv2/
+/.virtualenv3/
+/python/
+
 
 ## setuptools
 

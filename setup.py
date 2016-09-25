@@ -4,7 +4,14 @@ RELEASE_VERSION = '0.0.4'
 
 c_lib = Extension(
     'circularbuffer',
-    sources=['src/circular_buffer.c'],
+    sources=[
+        'src/circular_buffer.c',
+        'src/base.c',
+        'src/mapping.c',
+        'src/methods.c',
+        'src/sequence.c',
+    ],
+    include_dirs=['src'],
 )
 
 setup(

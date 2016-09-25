@@ -2,40 +2,50 @@ from circularbuffer import CircularBuffer
 
 def test_read_write():
     buf = CircularBuffer(15)
+    #'#               #'
     assert buf.write_available() == 15
 
-    written = buf.write(b'12345')
-    assert written == 5
+    assert buf.write(b'12345') == 5
+    #'12345#          #'
     assert buf.write_available() == 10
     assert str(buf) == '12345'
 
     assert buf.read(2) == b'12'
-    assert buf.write_available() == 10
+    #'  345#          #'
+    assert buf.write_available() == 12
     assert str(buf) == '345'
 
     assert buf.read(size=3) == b'345'
-    assert buf.write_available() == 10
+    #'     #          #'
+    assert buf.write_available() == 15
     assert str(buf) == ''
 
-    written = buf.write(b'123456789012345')
-    assert written == 10
-    assert buf.write_available() == 4
+    assert buf.write(b'1234567890') == 10
+    #'     1234567890##'
+    assert buf.write_available() == 5
     assert str(buf) == '1234567890'
 
-    written = buf.write(b'12')
-    assert written == 2
-    assert buf.write_available() == 2
+    assert buf.write(b'12') == 2
+    #'2#   12345678901#'
+    assert buf.write_available() == 3
     assert str(buf) == '123456789012'
 
-    written = buf.write(b'123456')
-    assert written == 2
+    assert buf.write(b'123456') == 3
+    #'2123#12345678901#'
     assert buf.write_available() == 0
-    assert str(buf) == '12345678901212'
+    assert str(buf) == '123456789012123'
 
-    buf.resize(20)
+    assert buf.resize(20) == 20
+    #'2123#12345678901     #'
     assert buf.write_available() == 0
-    assert str(buf) == '12345678901212'
+    assert str(buf) == '123456789012123'
 
     assert buf.read(10) == b'1234567890'
-    assert buf.write_available() == 16
-    assert str(buf) == '1212'
+    #'2123#          1     #'
+    assert buf.write_available() == 10
+    assert str(buf) == '12123'
+
+    assert buf.read(2) == b'12'
+    #' 123#                #'
+    assert buf.write_available() == 17
+    assert str(buf) == '123'
