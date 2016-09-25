@@ -9,6 +9,11 @@ Summary
 Simple `circular buffer <http://en.wikipedia.org/wiki/Circular_buffer>`_
 written in python extension.
 
+CircularBuffer will allocate requested size + 2 bytes for two sections of null
+terminated strings.
+
+WARNING: current implementation doesn't expect data with char 0, or char '\0'.
+
 
 Installation
 ------------
