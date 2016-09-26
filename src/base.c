@@ -138,3 +138,74 @@ PyObject* circularbuffer_peek_partial(CircularBuffer* self,
     }
     return result;
 }
+
+
+/*
+ * Make the internal buffer's data contiguous, from two segments into one.
+ */
+int circularbuffer_make_contiguous(CircularBuffer* self)
+{
+    if (self->write >= self->read)
+    {
+        return 0;
+    }
+    else if (self->write_lock || self->read_write_lock)
+    {
+        // trying to reallign internal buffer while it was being used
+        PyErr_SetString(ReservedError, "The internal buffer cannot be modified "
+                "at the moment.");
+
+        return -1;
+    }
+    self->read_lock++;
+    self->read_write_lock++;
+    self->write_lock++;
+
+    // temporary storage, allocate half of the allocated
+    Py_ssize_t half_size = (self->allocated_before_resize - 1) / 2 + 1;
+    Py_ssize_t size = self->write < half_size ? self->write : half_size;
+
+    char* tmp_raw = PyMem_Malloc(size);
+    if (tmp_raw == NULL)
+    {
+        PyErr_NoMemory();
+        self->write_lock--;
+        self->read_write_lock--;
+        self->read_lock--;
+        return -1;
+    }
+    memcpy(tmp_raw, self->raw, size);
+
+    // copy the first segment
+    char* write_ptr = self->raw;
+    size = circularbuffer_forward_length(self, self->read);
+    memmove(write_ptr, &self->raw[self->read], size);
+    write_ptr += size;
+
+    // copy the last segment (if the second segment was larger then half)
+    if (self->write > half_size)
+    {
+        size = circularbuffer_forward_length(self, half_size);
+        memcpy(write_ptr + half_size, self->raw + half_size, size);
+        size = half_size;
+    }
+    else
+    {
+        size = circularbuffer_forward_length(self, 0);
+    }
+
+    // copy the second segment
+    memcpy(write_ptr, tmp_raw, size);
+    PyMem_Free(tmp_raw);
+
+    size = circularbuffer_total_length(self);
+    self->raw[size] = 0;
+    self->write = size;
+    self->read = 0;
+    self->allocated_before_resize = self->allocated;
+
+    self->write_lock--;
+    self->read_write_lock--;
+    self->read_lock--;
+    return 0;
+}

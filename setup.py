@@ -1,6 +1,6 @@
 from setuptools import setup, Extension, find_packages
 
-RELEASE_VERSION = '0.0.4'
+RELEASE_VERSION = '0.0.5'
 
 c_lib = Extension(
     'circularbuffer',
@@ -10,6 +10,7 @@ c_lib = Extension(
         'src/mapping.c',
         'src/methods.c',
         'src/sequence.c',
+        'src/buffer.c',
     ],
     include_dirs=['src'],
 )

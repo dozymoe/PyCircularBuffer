@@ -93,6 +93,10 @@ PyObject* CircularBuffer_get_slice(CircularBuffer* self,
     {
         end = len + end + 1;
     }
+    else if (end >= len)
+    {
+        end = len;
+    }
     if (end <= start || start < 0 || end < 0)
     {
         return Py_BuildValue(STR_FORMAT_BYTE, "");

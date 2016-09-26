@@ -2,8 +2,17 @@
 #include "mapping.h"
 #include "methods.h"
 #include "sequence.h"
+#include "buffer.h"
+
+/* custom errors */
+
+
+PyObject* RealignmentError;
+PyObject* ReservedError;
+
 
 /* magic methods */
+
 
 PyObject* CircularBuffer_create(PyTypeObject* type, PyObject* args,
         PyObject* kwargs)
@@ -18,10 +27,18 @@ PyObject* CircularBuffer_create(PyTypeObject* type, PyObject* args,
         self->write = 0;
         self->allocated = 0;
         self->allocated_before_resize = 0;
+
+        self->write_lock = 0;
+        self->read_lock = 0;
+        self->read_write_lock = 0;
+#if PY_MAJOR_VERSION < 3
+        self->buffer_view_count = 0;
+#endif
     }
 
     return (PyObject*) self;
 }
+
 
 int CircularBuffer_initialize(CircularBuffer* self, PyObject* args,
         PyObject* kwargs)
@@ -49,11 +66,13 @@ int CircularBuffer_initialize(CircularBuffer* self, PyObject* args,
     return 0;
 }
 
+
 void CircularBuffer_destroy(CircularBuffer* self)
 {
     PyMem_Free(self->raw);
     Py_TYPE(self)->tp_free((PyObject*) self);
 }
+
 
 PyObject* CircularBuffer_repr(CircularBuffer* self)
 {
@@ -71,6 +90,7 @@ PyObject* CircularBuffer_repr(CircularBuffer* self)
                 self->raw);
     }
 }
+
 
 PyObject* CircularBuffer_str(CircularBuffer* self)
 {
@@ -115,7 +135,7 @@ PyTypeObject CircularBufferType = {
     (reprfunc) CircularBuffer_str,             // tp_str
     0,                                         // tp_getattro
     0,                                         // tp_setattro
-    0,                                         // tp_as_buffer
+    CircularBuffer_buffer,                     // tp_as_buffer
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,  // tp_flags
     "Circular buffer",                         // tp_doc
     0,                                         // tp_traverse
@@ -173,6 +193,19 @@ PyObject *module_init(void)
     Py_INCREF(&CircularBufferType);
     PyModule_AddObject(module, "CircularBuffer",
                        (PyObject*) &CircularBufferType);
+
+    // create exceptions
+    RealignmentError = PyErr_NewException("circularbuffer.RealignmentError",
+            PyExc_RuntimeError, NULL);
+
+    Py_INCREF(RealignmentError);
+    PyModule_AddObject(module, "RealignmentError", RealignmentError);
+
+    ReservedError = PyErr_NewException("circularbuffer.ReservedError",
+            PyExc_RuntimeError, NULL);
+
+    Py_INCREF(ReservedError);
+    PyModule_AddObject(module, "ReservedError", ReservedError);
 
     return module;
 }

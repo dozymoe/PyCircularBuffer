@@ -30,15 +30,23 @@ typedef struct {
     Py_ssize_t write;
     Py_ssize_t allocated;
     Py_ssize_t allocated_before_resize;
-    // buffer protocol
-    int buf_view_count;
 
-    char** buf_arr;
-    Py_ssize_t buf_shape[2];
-    Py_ssize_t buf_strides[2];
-    Py_ssize_t buf_suboffsets[2];
+    // read-only lock (rare, when restructuring internal buffer)
+    int read_lock;
+    // read and update-read-pointer lock (when buffer protocol is active)
+    char read_write_lock;
+#if PY_MAJOR_VERSION < 3
+    char buffer_view_count;
+#endif
+    // write lock (rare, when restructuring internal buffer)
+    char write_lock;
 } CircularBuffer;
 
+
+/* custom errors */
+
+extern PyObject* RealignmentError;
+extern PyObject* ReservedError;
 
 /* helper functions */
 
@@ -57,5 +65,6 @@ Py_ssize_t circularbuffer_write_available(CircularBuffer* self);
 PyObject* circularbuffer_peek_partial(CircularBuffer* self,
         Py_ssize_t start, Py_ssize_t size);
 
+int circularbuffer_make_contiguous(CircularBuffer* self);
 
 #endif

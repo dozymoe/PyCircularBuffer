@@ -46,7 +46,8 @@ static const char CIRCULARBUFFER_READ_DOCSTRING[] = QUOTE(
     \n
     :param size: number of bytes to read, could be negative which means
                  to read all from internal buffer\n
-    :returns: bytearray of data whose size could be smaller than requested
+    :returns: bytearray of data whose size could be smaller than requested\n
+    :raises ReservedError: someone uses buffer protocol
 );
 
 PyObject *CircularBuffer_read(CircularBuffer *self, PyObject *args,
@@ -59,10 +60,10 @@ PyObject *CircularBuffer_read(CircularBuffer *self, PyObject *args,
     {
         return NULL;
     }
-    else if (self->buf_view_count != 0)
+    else if (self->read_lock || self->read_write_lock)
     {
-        PyErr_SetString(PyExc_RuntimeError, "Cannot read while buffer "
-                "protocol is still active.");
+        PyErr_SetString(ReservedError, "The internal buffer cannot be modified "
+                "at the moment.");
 
         return NULL;
     }
@@ -94,7 +95,8 @@ static const char CIRCULARBUFFER_WRITE_DOCSTRING[] = QUOTE(
     utf-8.\n
     \n
     :param data: bytearray to be added to the buffer\n
-    :returns: number of bytes written, could be less than the size of data
+    :returns: number of bytes written, could be less than the size of data\n
+    :raises RealignmentError: internal buffer is being realign into one segment
 );
 
 PyObject* CircularBuffer_write(CircularBuffer* self, PyObject* args,
@@ -107,6 +109,13 @@ PyObject* CircularBuffer_write(CircularBuffer* self, PyObject* args,
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE, kwlist,
             &data))
     {
+        return NULL;
+    }
+    else if (self->write_lock)
+    {
+        PyErr_SetString(RealignmentError, "This is rare, but internal buffer "
+                "temporarily not available.");
+
         return NULL;
     }
 
@@ -158,7 +167,8 @@ static const char CIRCULARBUFFER_COUNT_DOCSTRING[] = QUOTE(
     Return the number of occurences of string in internal buffer.\n
     \n
     :param text: string to search\n
-    :returns: number of occurences
+    :returns: number of occurences\n
+    :raises RealignmentError: internal buffer is being realign into one segment
 );
 
 PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
@@ -171,6 +181,13 @@ PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE, kwlist,
             &search))
     {
+        return NULL;
+    }
+    else if (self->read_lock)
+    {
+        PyErr_SetString(RealignmentError, "This is rare, but internal buffer "
+                "temporarily not available.");
+
         return NULL;
     }
 
@@ -228,11 +245,19 @@ PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
 static const char CIRCULARBUFFER_CLEAR_DOCSTRING[] = QUOTE(
     Size of internal buffer available for writing.\n
     \n
-    :returns: size of one half of internal buffer available
+    :returns: size of one half of internal buffer available\n
+    :raises ReservedError: someone uses buffer protocol
 );
 
 PyObject* CircularBuffer_clear(CircularBuffer* self)
 {
+    if (self->write_lock || self->read_write_lock)
+    {
+        PyErr_SetString(ReservedError, "The internal buffer cannot be modified "
+                "at the moment.");
+
+        return NULL;
+    }
     self->write = self->read = 0;
     self->raw[0] = 0;
     self->allocated_before_resize = self->allocated;
@@ -243,7 +268,8 @@ PyObject* CircularBuffer_clear(CircularBuffer* self)
 static const char CIRCULARBUFFER_STARTSWITH_DOCSTRING[] = QUOTE(
     CB.startswith(prefix) -> bool\n
     \n
-    Return True if S starts with the specified prefix, False otherwise.
+    Return True if S starts with the specified prefix, False otherwise.\n
+    :raises RealignmentError: internal buffer is being realign into one segment
 );
 
 PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
@@ -258,11 +284,18 @@ PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
     {
         return NULL;
     }
+    else if (self->read_lock)
+    {
+        PyErr_SetString(RealignmentError, "This is rare, but internal buffer "
+                "temporarily not available.");
+
+        return NULL;
+    }
 
     int search_len = strlen(search);
     if (search_len > circularbuffer_total_length(self) || search_len == 0)
     {
-        PyErr_SetString(PyExc_ValueError, "invalid search string length");
+        PyErr_SetString(PyExc_ValueError, "Invalid search string length.");
         return NULL;
     }
 
@@ -322,6 +355,60 @@ PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
 }
 
 
+static const char CIRCULARBUFFER_MAKE_CONTIGUOUS_DOCSTRING[] = QUOTE(
+    CB.make_contiguous() -> None\n
+    \n
+    Reallign internal buffer into one segment, used by buffer protocol.\n
+    :raises ReservedError: someone uses buffer protocol
+);
+
+PyObject* CircularBuffer_make_contiguous(CircularBuffer* self)
+{
+    if (circularbuffer_make_contiguous(self))
+    {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+
+static const char CIRCULARBUFFER_CONTEXT_ENTER_DOCSTRING[] = QUOTE(
+    CB.__enter__() -> CB\n
+    \n
+    Lock buffer from modification, you could still write into though.\n
+    :raises ReservedError: someone uses buffer protocol
+);
+
+PyObject* CircularBuffer_context_enter(CircularBuffer* self)
+{
+    if (circularbuffer_make_contiguous(self))
+    {
+        return NULL;
+    }
+    self->read_write_lock++;
+    Py_INCREF(self);
+    return (PyObject*)self;
+}
+
+
+static const char CIRCULARBUFFER_CONTEXT_EXIT_DOCSTRING[] = QUOTE(
+    CB.__exit__() -> None\n
+    \n
+    Release lock, allow modification of internal buffer.\n
+    :raises ReservedError: someone uses buffer protocol
+);
+
+PyObject* CircularBuffer_context_exit(CircularBuffer* self, PyObject* args)
+{
+    //Py_DECREF(self);
+    self->read_write_lock--;
+#if PY_MAJOR_VERSION < 3
+    self->buffer_view_count--;
+#endif
+    Py_RETURN_NONE;
+}
+
+
 PyMethodDef CircularBuffer_methods[] = {
     {
         "clear",
@@ -364,6 +451,24 @@ PyMethodDef CircularBuffer_methods[] = {
         (PyCFunction) CircularBuffer_write_available,
         METH_NOARGS,
         CIRCULARBUFFER_WRITE_AVAILABLE_DOCSTRING
+    },
+    {
+        "make_contiguous",
+        (PyCFunction) CircularBuffer_make_contiguous,
+        METH_NOARGS,
+        CIRCULARBUFFER_MAKE_CONTIGUOUS_DOCSTRING
+    },
+    {
+        "__enter__",
+        (PyCFunction) CircularBuffer_context_enter,
+        METH_NOARGS,
+        CIRCULARBUFFER_CONTEXT_ENTER_DOCSTRING
+    },
+    {
+        "__exit__",
+        (PyCFunction) CircularBuffer_context_exit,
+        METH_VARARGS,
+        CIRCULARBUFFER_CONTEXT_EXIT_DOCSTRING
     },
     // end of array
     {NULL},
