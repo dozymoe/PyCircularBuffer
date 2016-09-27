@@ -8,13 +8,19 @@ def test_buffer():
     regex = re.compile(br'(5)')
 
     # one segment
-    assert buf.write(b'1234567890') == 10
+    assert buf.write(b'12345') == 5
     with buf as buf_:
         match = regex.search(buf_)
         assert match is not None
 
-    # two segments
+    # floated one segment
     assert buf.read(5) == b'12345'
+    assert buf.write(b'67890') == 5
+    with buf as buf_:
+        match = regex.search(buf_)
+        assert match is None
+
+    # two segments
     assert buf.write(b'1234567') == 7
     with buf:
         match = regex.search(buf)

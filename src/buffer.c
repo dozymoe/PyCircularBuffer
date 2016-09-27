@@ -37,7 +37,7 @@ int CircularBuffer_py3_release_buffer(CircularBuffer* self,
 int CircularBuffer_py2_get_read_buffer(CircularBuffer* self, int segment,
         void** data)
 {
-    *data = (void*) self->raw;
+    *data = (void*) &self->raw[self->read];
     return circularbuffer_total_length(self);
 }
 
@@ -72,7 +72,7 @@ int CircularBuffer_py2_get_segcount(CircularBuffer* self, int* len)
 int CircularBuffer_py2_get_char_buffer(CircularBuffer* self, int segment,
         char** data)
 {
-    *data = self->raw;
+    *data = &self->raw[self->read];
     return circularbuffer_total_length(self);
 }
 

@@ -28,24 +28,24 @@ is probably needed.
 Using
 -----
 
- |   from circularbuffer import CircularBuffer
- |
- |   buf = CircularBuffer(1024)
- |
- |   buf.write(b'some text')
- |   while len(buf) > 0:
- |       buf.read(1)
- |
- |   from re import match
- |
- |   buf.write(b'hallo')
- |
- |   # python2
- |   with buf:
- |       match(br'^ha', buf)
- |
- |   # python3
- |   match(br'^ha', buf)
+ |   >> from circularbuffer import CircularBuffer
+ |   >>
+ |   >> buf = CircularBuffer(1024)
+ |   >>
+ |   >> buf.write(b'some text')
+ |   >> while len(buf) > 0:
+ |   >>     buf.read(1)
+ |   >>
+ |   >> from re import match
+ |   >>
+ |   >> buf.write(b'hallo')
+ |   >>
+ |   >> # python2
+ |   >> with buf:
+ |   >>     match(br'^ha', buf)
+ |   >>
+ |   >> # python3
+ |   >> match(br'^ha', buf)
 
 
 API

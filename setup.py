@@ -1,6 +1,6 @@
 from setuptools import setup, Extension, find_packages
 
-RELEASE_VERSION = '0.0.5'
+RELEASE_VERSION = '0.0.6'
 
 c_lib = Extension(
     'circularbuffer',
