@@ -15,7 +15,8 @@ terminated strings.
 May temporary allocate another half of the allocated bytes if you used buffer
 protocol, I mostly used them for regex.
 
-WARNING: current implementation doesn't expect data with char 0, or char '\0'.
+WARNING: current implementation doesn't expect data with `char 0`, or
+`char '\\0'`.
 
 
 Installation
@@ -28,24 +29,32 @@ is probably needed.
 Using
 -----
 
- |   >> from circularbuffer import CircularBuffer
- |   >>
- |   >> buf = CircularBuffer(1024)
- |   >>
- |   >> buf.write(b'some text')
- |   >> while len(buf) > 0:
- |   >>     buf.read(1)
- |   >>
- |   >> from re import match
- |   >>
- |   >> buf.write(b'hallo')
- |   >>
- |   >> # python2
- |   >> with buf:
- |   >>     match(br'^ha', buf)
- |   >>
- |   >> # python3
- |   >> match(br'^ha', buf)
+.. code-block:: python
+
+    from circularbuffer import CircularBuffer
+
+    buf = CircularBuffer(1024)
+
+    buf.write(b'some text')
+    while len(buf) > 0:
+        buf.read(1)
+
+    from re import match
+
+    buf.write(b'hallo')
+
+    # python2
+    with buf:
+        result = match(br'^ha', buf)
+
+    # python3
+    result = match(br'^ha', buf)
+
+    # use `result` immediately because regex didn't make memory copy of the
+    # internal buffer, or run another `match()` on a memory copy, for example:
+
+    found_str = buf.read(len(result))
+    result = match(br'^ha', found_str)
 
 
 API
