@@ -45,16 +45,16 @@ Using
 
     # python2
     with buf:
-        result = match(br'^ha', buf)
+        match_found = match(br'^ha', buf)
 
     # python3
-    result = match(br'^ha', buf)
+    match_found = match(br'^ha', buf)
 
     # use `result` immediately because regex didn't make memory copy of the
     # internal buffer, or run another `match()` on a memory copy, for example:
 
-    found_str = buf.read(len(result))
-    result = match(br'^ha', found_str)
+    match_found_str = buf.read(len(match_found.group(0)))
+    independent_match_found = match(br'^ha', match_found_str)
 
 
 API
