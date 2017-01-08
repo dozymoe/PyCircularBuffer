@@ -57,6 +57,12 @@ Using
     independent_match_found = match(br'^ha', match_found_str)
 
 
+Warning
+-------
+
+Don't to this in python 3: `'a' in buf`, instead: `b'a' in buf`.
+
+
 API
 ---
 
@@ -73,6 +79,8 @@ String methods:
 ^^^^^^^^^^^^^^^
 * count()
 * startswith()
+* find()
+* index()
 
 Sequence methods:
 ^^^^^^^^^^^^^^^^^

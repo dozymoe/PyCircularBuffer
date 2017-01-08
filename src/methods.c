@@ -203,16 +203,13 @@ PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
 
     const char* pread = circularbuffer_readptr(self);
     const char* pread_half_end;
-    const char* pread_end;
     if (self->write < self->read)
     {
         pread_half_end = self->raw + self->allocated_before_resize;
-        pread_end = self->raw + self->write;
     }
     else
     {
         pread_half_end = self->raw + self->write;
-        pread_end = self->raw + self->write;
     }
 
     Py_ssize_t count = 0;
@@ -227,17 +224,22 @@ PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
         }
         pread += 1;
     }
-    while (pread < pread_end)
+    if (self->write < self->read)
     {
-        psearch = pread[0] == psearch[0] ? psearch + 1 : search;
-        if (psearch == psearch_end)
-        {
-            count += 1;
-            psearch = search;
-        }
-        pread += 1;
-    }
+        pread = self->raw;
+        pread_half_end = self->raw + self->write;
 
+        while (pread < pread_half_end)
+        {
+            psearch = pread[0] == psearch[0] ? psearch + 1 : search;
+            if (psearch == psearch_end)
+            {
+                count += 1;
+                psearch = search;
+            }
+            pread += 1;
+        }
+    }
     return Py_BuildValue("n", count);
 }
 
@@ -299,59 +301,120 @@ PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
         return NULL;
     }
 
-    const char* psearch = search;
-    const char* psearch_end = psearch + search_len;
+    Py_ssize_t pos = circularbuffer_find(self, search, search_len, 0,
+            search_len);
 
-    const char* pread = circularbuffer_readptr(self);
-    const char* pread_half_end;
-    const char* pread_end;
-    if (self->write < self->read)
+    if (pos < 0)
     {
-        pread_half_end = self->raw + self->allocated_before_resize;
-        pread_end = self->raw + self->write;
+        return Py_BuildValue("i", 0);
     }
     else
     {
-        pread_half_end = self->raw + self->write;
-        pread_end = self->raw + self->write;
+        return Py_BuildValue("i", 1);
     }
+}
 
-    Py_ssize_t count = 0;
 
-    while (pread < pread_half_end)
+static const char CIRCULARBUFFER_FIND_DOCSTRING[] = QUOTE(
+    CB.find(sub [,start [,end]]) -> int\n
+    \n
+    Return the lowest index in CB where substring sub is found,\n
+    such that sub is contained within CB[start:end]. Optional\n
+    arguments start and end are interpreted as in slice notation.\n
+    \n
+    Return -1 on failure.\n
+    \n
+    :param sub: string to search\n
+    :param start: index for partial search\n
+    :param end: index for partial search\n
+    :returns: index of first occurence\n
+);
+
+PyObject* CircularBuffer_find(CircularBuffer* self, PyObject* args,
+        PyObject* kwargs)
+{
+    static char* kwlist[] = {"sub", "start", "end", NULL};
+
+    const char* search;
+    Py_ssize_t start = 0;
+    Py_ssize_t end = -1;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE "|nn",
+            kwlist, &search, &start, &end))
     {
-        if (pread[0] == psearch[0])
-        {
-            psearch += 1;
-        }
-        else
-        {
-            return Py_BuildValue("i", 0);
-        }
-        if (psearch == psearch_end)
-        {
-            return Py_BuildValue("i", 1);
-        }
-        pread += 1;
+        return NULL;
     }
-    while (pread < pread_end)
+    else if (self->read_lock)
     {
-        if (pread[0] == psearch[0])
-        {
-            psearch += 1;
-        }
-        else
-        {
-            return Py_BuildValue("i", 0);
-        }
-        if (psearch == psearch_end)
-        {
-            return Py_BuildValue("i", 1);
-        }
-        pread += 1;
+        PyErr_SetString(RealignmentError, "This is rare, but internal buffer "
+                "temporarily not available.");
+
+        return NULL;
     }
 
-    return Py_BuildValue("i", 0);
+    int search_len = strlen(search);
+    if (search_len > circularbuffer_total_length(self) || search_len == 0)
+    {
+        PyErr_SetString(PyExc_ValueError, "invalid search string length");
+        return NULL;
+    }
+
+    return Py_BuildValue("n", circularbuffer_find(self, search, search_len,
+                start, end));
+}
+
+
+static const char CIRCULARBUFFER_INDEX_DOCSTRING[] = QUOTE(
+    CB.index(sub [,start [,end]]) -> int\n
+    \n
+    Like CB.find() but raise ValueError when the substring is not found.\n
+    \n
+    :param sub: string to search\n
+    :param start: index for partial search\n
+    :param end: index for partial search\n
+    :returns: number of occurences\n
+    :raises ValueError: unable to find sub\n
+);
+
+PyObject* CircularBuffer_index(CircularBuffer* self, PyObject* args,
+        PyObject* kwargs)
+{
+    static char* kwlist[] = {"sub", "start", "end", NULL};
+
+    const char* search;
+    Py_ssize_t start = 0;
+    Py_ssize_t end = -1;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE "|nn",
+            kwlist, &search, &start, &end))
+    {
+        return NULL;
+    }
+    else if (self->read_lock)
+    {
+        PyErr_SetString(RealignmentError, "This is rare, but internal buffer "
+                "temporarily not available.");
+
+        return NULL;
+    }
+
+    int search_len = strlen(search);
+    if (search_len > circularbuffer_total_length(self) || search_len == 0)
+    {
+        PyErr_SetString(PyExc_ValueError, "invalid search string length");
+        return NULL;
+    }
+
+    Py_ssize_t pos = circularbuffer_find(self, search, search_len, start, end);
+    if (pos < 0)
+    {
+        PyErr_SetString(PyExc_ValueError, "substring not found");
+        return NULL;
+    }
+    else
+    {
+        return Py_BuildValue("n", pos);
+    }
 }
 
 
@@ -451,6 +514,18 @@ PyMethodDef CircularBuffer_methods[] = {
         (PyCFunction) CircularBuffer_write_available,
         METH_NOARGS,
         CIRCULARBUFFER_WRITE_AVAILABLE_DOCSTRING
+    },
+    {
+        "find",
+        (PyCFunction) CircularBuffer_find,
+        METH_VARARGS | METH_KEYWORDS,
+        CIRCULARBUFFER_FIND_DOCSTRING
+    },
+    {
+        "index",
+        (PyCFunction) CircularBuffer_index,
+        METH_VARARGS | METH_KEYWORDS,
+        CIRCULARBUFFER_INDEX_DOCSTRING
     },
     {
         "make_contiguous",

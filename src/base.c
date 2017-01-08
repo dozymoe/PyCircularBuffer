@@ -209,3 +209,88 @@ int circularbuffer_make_contiguous(CircularBuffer* self)
     self->read_lock--;
     return 0;
 }
+
+
+/*
+ * Parse optional argument start and end coming from sequence like methods.
+ */
+void circularbuffer_parse_slice_notation(CircularBuffer *self, Py_ssize_t len,
+        Py_ssize_t *start, Py_ssize_t *end)
+{
+    if (*start < 0)
+    {
+        *start = len + *start;
+    }
+    if (*end < 0)
+    {
+        *end = len + *end + 1;
+    }
+    else if (*end > len)
+    {
+        *end = len;
+    }
+}
+
+
+/*
+ * Get index of first match.
+ */
+Py_ssize_t circularbuffer_find(CircularBuffer *self, const char* search,
+        Py_ssize_t search_len, Py_ssize_t start, Py_ssize_t end)
+{
+    Py_ssize_t len = circularbuffer_total_length(self);
+    Py_ssize_t index = start + 1;
+
+    circularbuffer_parse_slice_notation(self, len, &start, &end);
+
+    if (end <= start || start < 0 || end < 0)
+    {
+        return -1;
+    }
+
+    start = circularbuffer_translated_position(self, start);
+    end = circularbuffer_translated_position(self, end);
+
+    const char* psearch = search;
+    const char* psearch_end = psearch + search_len;
+
+    const char* pread = &self->raw[start];
+    const char* pread_half_end;
+    if (end < start)
+    {
+        pread_half_end = self->raw + self->allocated_before_resize;
+    }
+    else
+    {
+        pread_half_end = self->raw + end;
+    }
+
+    while (pread < pread_half_end)
+    {
+        psearch = pread[0] == psearch[0] ? psearch + 1 : search;
+        if (psearch == psearch_end)
+        {
+            return index - search_len;
+        }
+        pread += 1;
+        index += 1;
+    }
+    if (end < start)
+    {
+        pread = self->raw;
+        pread_half_end = self->raw + end;
+
+        while (pread < pread_half_end)
+        {
+            psearch = pread[0] == psearch[0] ? psearch + 1 : search;
+            if (psearch == psearch_end)
+            {
+                return index - search_len;
+            }
+            pread += 1;
+            index += 1;
+        }
+    }
+
+    return -1;
+}

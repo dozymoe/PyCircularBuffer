@@ -18,7 +18,6 @@ PyObject* CircularBuffer_get_slice(CircularBuffer* self,
 int CircularBuffer_set_slice(CircularBuffer* self, Py_ssize_t start,
         Py_ssize_t end, PyObject* data);
 
-
 extern PySequenceMethods CircularBuffer_sequence[];
 
 #endif

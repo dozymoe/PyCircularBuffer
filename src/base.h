@@ -67,4 +67,10 @@ PyObject* circularbuffer_peek_partial(CircularBuffer* self,
 
 int circularbuffer_make_contiguous(CircularBuffer* self);
 
+void circularbuffer_parse_slice_notation(CircularBuffer *self, Py_ssize_t len,
+        Py_ssize_t *start, Py_ssize_t *end);
+
+Py_ssize_t circularbuffer_find(CircularBuffer *self, const char* search,
+        Py_ssize_t search_len, Py_ssize_t start, Py_ssize_t end);
+
 #endif

@@ -85,18 +85,8 @@ PyObject* CircularBuffer_get_slice(CircularBuffer* self,
         Py_ssize_t start, Py_ssize_t end)
 {
     Py_ssize_t len = circularbuffer_total_length(self);
-    if (start < 0)
-    {
-        start = len + start;
-    }
-    if (end < 0)
-    {
-        end = len + end + 1;
-    }
-    else if (end >= len)
-    {
-        end = len;
-    }
+    circularbuffer_parse_slice_notation(self, len, &start, &end);
+
     if (end <= start || start < 0 || end < 0)
     {
         return Py_BuildValue(STR_FORMAT_BYTE, "");

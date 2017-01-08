@@ -22,6 +22,12 @@ PyObject* CircularBuffer_clear(CircularBuffer* self);
 PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
         PyObject* kwargs);
 
+PyObject* CircularBuffer_find(CircularBuffer* self, PyObject* args,
+        PyObject* kwargs);
+
+PyObject* CircularBuffer_index(CircularBuffer* self, PyObject* args,
+        PyObject* kwargs);
+
 
 extern PyMethodDef CircularBuffer_methods[];
 
