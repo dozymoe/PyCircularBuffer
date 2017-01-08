@@ -104,38 +104,36 @@ Py_ssize_t circularbuffer_translated_position(CircularBuffer* self,
  * May alter internal buffer during the course of the function.
  */
 PyObject* circularbuffer_peek_partial(CircularBuffer* self,
-        Py_ssize_t start, Py_ssize_t size)
+        Py_ssize_t start, Py_ssize_t end)
 {
-    PyObject* result;
     Py_ssize_t len = circularbuffer_total_length(self);
-    if (size > len)
+    circularbuffer_parse_slice_notation(self, len, &start, &end);
+
+    if (end <= start || start < 0 || end < 0)
     {
-        size = len;
-    }
-    Py_ssize_t pos_start = self->read + start;
-    if (pos_start > self->allocated_before_resize)
-    {
-        pos_start -= self->allocated_before_resize;
-    }
-    Py_ssize_t pos_end = size > 0 ? pos_start + size - 1 : pos_start;
-    if (pos_end > self->allocated_before_resize)
-    {
-        pos_end -= self->allocated_before_resize;
+        return Py_BuildValue(STR_FORMAT_BYTE, "", 0);
     }
 
-    if (pos_end >= pos_start)
+    len = end - start;
+
+    start = circularbuffer_translated_position(self, start);
+    Py_ssize_t avail = circularbuffer_forward_length(self, start);
+
+    char *tmp = (char*) PyMem_Malloc(len);
+    char *write = tmp;
+
+    if (avail < len)
     {
-        result = Py_BuildValue(STR_FORMAT_BYTE "#", &self->raw[pos_start],
-                 size);
+        memcpy(write, &self->raw[start], avail);
+        memcpy(write + avail, self->raw, len - avail);
     }
     else
     {
-        char tmp_char = self->raw[pos_end];
-        self->raw[pos_end] = 0;
-
-        result = PyBytes_FromFormat("%s%s", &self->raw[pos_start], self->raw);
-        self->raw[pos_end] = tmp_char;
+        memcpy(write, &self->raw[start], len);
     }
+
+    PyObject *result = Py_BuildValue(STR_FORMAT_BYTE, tmp, len);
+    PyMem_Free(tmp);
     return result;
 }
 

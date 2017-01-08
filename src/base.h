@@ -12,10 +12,12 @@
 #define PyString_FromFormat PyUnicode_FromFormat
 
 #if PY_MAJOR_VERSION < 3
-    #define STR_FORMAT_BYTE "s"
+    #define STR_FORMAT_BYTE "s#"
 #else
-    #define STR_FORMAT_BYTE "y"
+    #define STR_FORMAT_BYTE "y#"
 #endif
+
+#define REPR_LENGTH 64
 
 // see: http://stackoverflow.com/a/17996915
 #define QUOTE(...) #__VA_ARGS__

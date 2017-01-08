@@ -14,7 +14,7 @@ PyObject* CircularBuffer_get_item(CircularBuffer* self, Py_ssize_t pos)
         PyErr_SetNone(PyExc_IndexError);
         return NULL;
     }
-    return Py_BuildValue(STR_FORMAT_BYTE "#", &self->raw[translated_pos], 1);
+    return Py_BuildValue(STR_FORMAT_BYTE, &self->raw[translated_pos], 1);
 }
 
 
@@ -84,14 +84,7 @@ int CircularBuffer_contains(CircularBuffer* self, PyObject* item)
 PyObject* CircularBuffer_get_slice(CircularBuffer* self,
         Py_ssize_t start, Py_ssize_t end)
 {
-    Py_ssize_t len = circularbuffer_total_length(self);
-    circularbuffer_parse_slice_notation(self, len, &start, &end);
-
-    if (end <= start || start < 0 || end < 0)
-    {
-        return Py_BuildValue(STR_FORMAT_BYTE, "");
-    }
-    return circularbuffer_peek_partial(self, start, end - start);
+    return circularbuffer_peek_partial(self, start, end);
 }
 
 

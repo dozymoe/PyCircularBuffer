@@ -15,9 +15,6 @@ terminated strings.
 May temporary allocate another half of the allocated bytes if you used buffer
 protocol, I mostly used them for regex.
 
-WARNING: current implementation doesn't expect data with `char 0`, or
-`char '\\0'`.
-
 
 Installation
 ------------

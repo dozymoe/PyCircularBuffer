@@ -69,17 +69,23 @@ PyObject *CircularBuffer_read(CircularBuffer *self, PyObject *args,
     }
     else if (size == 0)
     {
-        return Py_BuildValue(STR_FORMAT_BYTE, "");
+        return Py_BuildValue(STR_FORMAT_BYTE, "", 0);
     }
 
-    if (size < 0)
+    Py_ssize_t len = circularbuffer_total_length(self);
+    Py_ssize_t start = 0;
+    Py_ssize_t end = size;
+
+    circularbuffer_parse_slice_notation(self, len, &start, &end);
+
+    if (end <= start || start < 0 || end < 0)
     {
-        size = circularbuffer_total_length(self);
+        return Py_BuildValue(STR_FORMAT_BYTE, "", 0);
     }
 
-    PyObject* result = circularbuffer_peek_partial(self, 0, size);
+    PyObject* result = circularbuffer_peek_partial(self, 0, end);
 
-    self->read += size;
+    self->read += end - start;
     if (self->read > self->allocated_before_resize)
     {
         self->read -= self->allocated_before_resize + 1;
@@ -105,9 +111,10 @@ PyObject* CircularBuffer_write(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"data", NULL};
 
     const char* data;
+    int length;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE, kwlist,
-            &data))
+            &data, &length))
     {
         return NULL;
     }
@@ -120,7 +127,6 @@ PyObject* CircularBuffer_write(CircularBuffer* self, PyObject* args,
     }
 
     Py_ssize_t written = 0;
-    Py_ssize_t length = strlen(data);
 
     // two halves
     while (length)
@@ -177,9 +183,10 @@ PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"text", NULL};
 
     const char* search;
+    int search_len;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE, kwlist,
-            &search))
+            &search, &search_len))
     {
         return NULL;
     }
@@ -191,7 +198,6 @@ PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
         return NULL;
     }
 
-    int search_len = strlen(search);
     if (search_len > circularbuffer_total_length(self) || search_len == 0)
     {
         PyErr_SetString(PyExc_ValueError, "invalid search string length");
@@ -280,9 +286,10 @@ PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"prefix", NULL};
 
     const char* search;
+    int search_len;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE, kwlist,
-            &search))
+            &search, &search_len))
     {
         return NULL;
     }
@@ -294,7 +301,6 @@ PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
         return NULL;
     }
 
-    int search_len = strlen(search);
     if (search_len > circularbuffer_total_length(self) || search_len == 0)
     {
         PyErr_SetString(PyExc_ValueError, "Invalid search string length.");
@@ -336,11 +342,12 @@ PyObject* CircularBuffer_find(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"sub", "start", "end", NULL};
 
     const char* search;
+    int search_len;
     Py_ssize_t start = 0;
     Py_ssize_t end = -1;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE "|nn",
-            kwlist, &search, &start, &end))
+            kwlist, &search, &search_len, &start, &end))
     {
         return NULL;
     }
@@ -352,7 +359,6 @@ PyObject* CircularBuffer_find(CircularBuffer* self, PyObject* args,
         return NULL;
     }
 
-    int search_len = strlen(search);
     if (search_len > circularbuffer_total_length(self) || search_len == 0)
     {
         PyErr_SetString(PyExc_ValueError, "invalid search string length");
@@ -382,11 +388,12 @@ PyObject* CircularBuffer_index(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"sub", "start", "end", NULL};
 
     const char* search;
+    int search_len;
     Py_ssize_t start = 0;
     Py_ssize_t end = -1;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE "|nn",
-            kwlist, &search, &start, &end))
+            kwlist, &search, &search_len, &start, &end))
     {
         return NULL;
     }
@@ -398,7 +405,6 @@ PyObject* CircularBuffer_index(CircularBuffer* self, PyObject* args,
         return NULL;
     }
 
-    int search_len = strlen(search);
     if (search_len > circularbuffer_total_length(self) || search_len == 0)
     {
         PyErr_SetString(PyExc_ValueError, "invalid search string length");

@@ -76,33 +76,63 @@ void CircularBuffer_destroy(CircularBuffer* self)
 
 PyObject* CircularBuffer_repr(CircularBuffer* self)
 {
-    if (self->write >= self->read)
+    char *tmp = (char*) PyMem_Malloc(REPR_LENGTH);
+    Py_ssize_t size, avail;
+
+    Py_ssize_t len = circularbuffer_total_length(self);
+    int count = sprintf(tmp, "<CircularBuffer[%zd]:", len);
+
+    char *write = &tmp[count];
+    if (len < REPR_LENGTH - count - 1)
     {
-        return PyString_FromFormat("<CircularBuffer[%u]:%s>",
-                circularbuffer_total_length(self),
-                circularbuffer_readptr(self));
+        size = count + len + 1;
+
+        count = len;
+        write[count] = '>';
     }
     else
     {
-        return PyString_FromFormat("<CircularBuffer[%u]:%s%s>",
-                circularbuffer_total_length(self),
-                circularbuffer_readptr(self),
-                self->raw);
+        size = REPR_LENGTH;
+
+        count = REPR_LENGTH - count - 3;
+        write[count    ] = '.';
+        write[count + 1] = '.';
+        write[count + 2] = '>';
     }
+
+    avail = circularbuffer_forward_length(self, self->read);
+    if (count <= avail)
+    {
+        memcpy(write, &self->raw[self->read], count);
+    }
+    else
+    {
+        memcpy(write, &self->raw[self->read], avail);
+        memcpy(write + avail, self->raw, count - avail);
+    }
+
+    PyObject *result = Py_BuildValue("s#", tmp, size);
+    PyMem_Free(tmp);
+    return result;
 }
 
 
 PyObject* CircularBuffer_str(CircularBuffer* self)
 {
-    if (self->write >= self->read)
+    Py_ssize_t len = circularbuffer_total_length(self);
+    char *tmp = (char*) PyMem_Malloc(len);
+    char *write = tmp;
+
+    Py_ssize_t avail = circularbuffer_forward_length(self, self->read);
+    memcpy(write, &self->raw[self->read], avail);
+    if (avail < len)
     {
-        return PyString_FromFormat("%s", circularbuffer_readptr(self));
+        memcpy(write + avail, self->raw, len - avail);
     }
-    else
-    {
-        return PyString_FromFormat("%s%s", circularbuffer_readptr(self),
-                self->raw);
-    }
+
+    PyObject *result = Py_BuildValue("s#", tmp, len);
+    PyMem_Free(tmp);
+    return result;
 }
 
 

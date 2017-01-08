@@ -32,11 +32,11 @@ PyObject* CircularBuffer_get_subscript(CircularBuffer* self,
 
         if (slicelength <= 0)
         {
-            return Py_BuildValue(STR_FORMAT_BYTE, "");
+            return Py_BuildValue(STR_FORMAT_BYTE, "", 0);
         }
         else if (step == 1)
         {
-            return circularbuffer_peek_partial(self, start, stop - start);
+            return circularbuffer_peek_partial(self, start, stop);
         }
         else {
             PyObject *result;
@@ -53,7 +53,7 @@ PyObject* CircularBuffer_get_subscript(CircularBuffer* self,
                 tempbuf[i] = self->raw[pos];
             }
 
-            result = Py_BuildValue(STR_FORMAT_BYTE "#", tempbuf, slicelength);
+            result = Py_BuildValue(STR_FORMAT_BYTE, tempbuf, slicelength);
 
             PyMem_Free(tempbuf);
             return result;
