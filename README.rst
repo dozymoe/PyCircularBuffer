@@ -59,6 +59,9 @@ Warning
 
 Don't to this in python 3: `'a' in buf`, instead: `b'a' in buf`.
 
+Check the return value of write() which is the actual length that was written
+into the buffer and also the exception that might be raised.
+
 
 API
 ---

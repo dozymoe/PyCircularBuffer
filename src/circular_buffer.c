@@ -1,3 +1,4 @@
+#define PY_SSIZE_T_CLEAN
 #include "base.h"
 #include "mapping.h"
 #include "methods.h"

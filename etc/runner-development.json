@@ -1,0 +1,23 @@
+{
+  "modules": [
+    "modules.setup",
+    "modules.python",
+    "modules.virtualenv"
+  ],
+  "setup_modules": [
+    "setup_modules.python"
+  ],
+
+  "python_version": "3.9",
+
+  "default_project": "runtest",
+  "default_variant": "development",
+
+  "configuration": {
+    "development": {
+      "runtests": {
+        "work_dir": "."
+      }
+    }
+  }
+}

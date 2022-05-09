@@ -1,3 +1,4 @@
+#define PY_SSIZE_T_CLEAN
 #include "sequence.h"
 
 Py_ssize_t CircularBuffer_length(CircularBuffer* self)

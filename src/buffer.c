@@ -1,3 +1,4 @@
+#define PY_SSIZE_T_CLEAN
 #include "buffer.h"
 
 int CircularBuffer_py3_get_buffer(CircularBuffer* self,

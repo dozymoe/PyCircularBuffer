@@ -59,6 +59,9 @@ Py_ssize_t circularbuffer_forward_length(CircularBuffer* self,
 
 Py_ssize_t circularbuffer_total_length(CircularBuffer* self);
 
+Py_ssize_t circularbuffer_forward_available(CircularBuffer* self);
+Py_ssize_t circularbuffer_total_available(CircularBuffer* self);
+
 Py_ssize_t circularbuffer_translated_position(CircularBuffer* self,
         Py_ssize_t pos);
 

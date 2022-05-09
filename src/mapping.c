@@ -1,3 +1,4 @@
+#define PY_SSIZE_T_CLEAN
 #include "mapping.h"
 #include "sequence.h"
 
@@ -24,8 +25,8 @@ PyObject* CircularBuffer_get_subscript(CircularBuffer* self,
     {
         Py_ssize_t start, stop, step, slicelength, cur, i;
 
-        if (PySlice_GetIndicesEx((PySliceObject*)item, len, &start, &stop,
-                &step, &slicelength) < 0)
+        if (PySlice_GetIndicesEx(item, len, &start, &stop, &step,
+                &slicelength) < 0)
         {
             return NULL;
         }

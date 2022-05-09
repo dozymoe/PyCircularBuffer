@@ -1,3 +1,5 @@
+#define PY_SSIZE_T_CLEAN
+#include "base.h"
 #include "methods.h"
 
 static const char CIRCULARBUFFER_RESIZE_DOCSTRING[] = QUOTE(
@@ -111,7 +113,7 @@ PyObject* CircularBuffer_write(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"data", NULL};
 
     const char* data;
-    int length;
+    Py_ssize_t length;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE, kwlist,
             &data, &length))
@@ -183,7 +185,7 @@ PyObject* CircularBuffer_count(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"text", NULL};
 
     const char* search;
-    int search_len;
+    Py_ssize_t search_len;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE, kwlist,
             &search, &search_len))
@@ -286,7 +288,7 @@ PyObject* CircularBuffer_startswith(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"prefix", NULL};
 
     const char* search;
-    int search_len;
+    Py_ssize_t search_len;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, STR_FORMAT_BYTE, kwlist,
             &search, &search_len))
@@ -342,7 +344,7 @@ PyObject* CircularBuffer_find(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"sub", "start", "end", NULL};
 
     const char* search;
-    int search_len;
+    Py_ssize_t search_len;
     Py_ssize_t start = 0;
     Py_ssize_t end = -1;
 
@@ -388,7 +390,7 @@ PyObject* CircularBuffer_index(CircularBuffer* self, PyObject* args,
     static char* kwlist[] = {"sub", "start", "end", NULL};
 
     const char* search;
-    int search_len;
+    Py_ssize_t search_len;
     Py_ssize_t start = 0;
     Py_ssize_t end = -1;
 
